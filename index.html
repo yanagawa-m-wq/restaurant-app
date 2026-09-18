@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飲食店 相互マッチングファインダー</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        <!-- ヘッダー -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-900 mb-2">🍽️ グルメ・マッチングファインダー</h1>
+            <p class="text-slate-600">メンバーからお店を探す、またはお店からメンバーを確認できます。</p>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <!-- 左カラム：メンバー選択（絞り込み用） -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 md:col-span-1">
+                <h2 class="text-lg font-semibold mb-4 flex items-center justify-between">
+                    <span>👥 同行メンバー</span>
+                    <button id="reset-btn" class="text-xs text-blue-600 hover:underline">リセット</button>
+                </h2>
+                <p class="text-xs text-slate-500 mb-4">選択したメンバー全員が行けるお店を表示します。</p>
+                
+                <div id="member-filters" class="space-y-2">
+                    <!-- 動的生成 -->
+                </div>
+            </div>
+
+            <!-- 右カラム：店舗一覧・詳細 -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 md:col-span-2">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">🏪 該当する店舗一覧</h2>
+                    <span id="result-count" class="text-sm bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-medium">0件</span>
+                </div>
+
+                <!-- 店舗リスト -->
+                <div id="store-list" class="space-y-4">
+                    <!-- 動的生成 -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // --- モックデータ ---
+        const members = [
+            { id: 'm1', name: '田中 (肉好き)' },
+            { id: 'm2', name: '佐藤 (魚・和食)' },
+            { id: 'm3', name: '鈴木 (お酒・居酒屋)' },
+            { id: 'm4', name: '高橋 (イタリアン・甘党)' }
+        ];
+
+        const stores = [
+            {
+                id: 's1',
+                name: '炭火焼肉 牛角隠れ家',
+                genre: '焼肉',
+                budget: '¥5,000〜¥7,000',
+                memo: 'みんなでワイワイできる個室あり。',
+                memberIds: ['m1', 'm3'] // 田中、鈴木
+            },
+            {
+                id: 's2',
+                name: '海鮮居酒屋 磯の香',
+                genre: '和食・海鮮',
+                budget: '¥4,000〜¥5,000',
+                memo: '日本酒の品揃えが豊富。',
+                memberIds: ['m2', 'm3'] // 佐藤、鈴木
+            },
+            {
+                id: 's3',
+                name: 'トラットリア・レモン',
+                genre: 'イタリアン',
+                budget: '¥3,000〜¥4,000',
+                memo: 'ピザとデザートが絶品。',
+                memberIds: ['m1', 'm4'] // 田中、高橋
+            },
+            {
+                id: 's4',
+                name: '大衆酒場 ぴょん吉',
+                genre: '居酒屋',
+                budget: '¥2,000〜¥3,000',
+                memo: 'コスパ最強。サク飲み向き。',
+                memberIds: ['m1', 'm2', 'm3'] // 田中、佐藤、鈴木
+            },
+            {
+                id: 's5',
+                name: '隠れ家ビストロ Petit',
+                genre: 'フレンチ・イタリアン',
+                budget: '¥6,000〜¥8,000',
+                memo: '落ち着いた雰囲気でデートにも。',
+                memberIds: ['m2', 'm4'] // 佐藤、高橋
+            },
+            {
+                id: 's6',
+                name: '全メンバー大集合居酒屋 絆',
+                genre: '居酒屋',
+                budget: '¥3,500〜¥4,500',
+                memo: '大人数宴会に最適！',
+                memberIds: ['m1', 'm2', 'm3', 'm4'] // 全員
+            }
+        ];
+
+        // --- アプリケーションの状態 ---
+        let selectedMemberIds = [];
+
+        // --- DOM要素 ---
+        const memberFiltersEl = document.getElementById('member-filters');
+        const storeListEl = document.getElementById('store-list');
+        const resultCountEl = document.getElementById('result-count');
+        const resetBtn = document.getElementById('reset-btn');
+
+        // --- 初期化描画 ---
+        function init() {
+            renderMemberFilters();
+            renderStores();
+
+            resetBtn.addEventListener('click', () => {
+                selectedMemberIds = [];
+                document.querySelectorAll('.member-checkbox').forEach(cb => cb.checked = false);
+                renderStores();
+            });
+        }
+
+        // --- メンバーフィルターの描画 ---
+        function renderMemberFilters() {
+            memberFiltersEl.innerHTML = members.map(m => `
+                <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition">
+                    <input type="checkbox" value="${m.id}" class="member-checkbox w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500">
+                    <span class="text-sm font-medium text-slate-700">${m.name}</span>
+                </label>
+            `).join('');
+
+            // イベントリスナーの設定
+            document.querySelectorAll('.member-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const id = e.target.value;
+                    if (e.target.checked) {
+                        selectedMemberIds.push(id);
+                    } else {
+                        selectedMemberIds = selectedMemberIds.filter(item => item !== id);
+                    }
+                    renderStores();
+                });
+            });
+        }
+
+        // --- 店舗一覧の描画（絞り込みロジック含む） ---
+        function renderStores() {
+            // 絞り込み：選択されたメンバー全員を「含んでいる」店舗を抽出
+            const filteredStores = stores.filter(store => {
+                return selectedMemberIds.every(selectedId => store.memberIds.includes(selectedId));
+            });
+
+            resultCountEl.textContent = `${filteredStores.length}件`;
+
+            if (filteredStores.length === 0) {
+                storeListEl.innerHTML = `
+                    <div class="text-center py-12 text-slate-400">
+                        <p class="text-lg">条件に一致する店舗が見つかりませんでした。</p>
+                        <p class="text-sm mt-1">選択するメンバーを減らしてみてください。</p>
+                    </div>
+                `;
+                return;
+            }
+
+            storeListEl.innerHTML = filteredStores.map(store => {
+                // 店舗に紐づくメンバーのバッジを生成
+                const memberBadges = store.memberIds.map(mId => {
+                    const member = members.find(m => m.id === mId);
+                    const isSelected = selectedMemberIds.includes(mId);
+                    // フィルターで選択されているメンバーは強調表示
+                    const badgeStyle = isSelected 
+                        ? 'bg-blue-100 text-blue-800 border border-blue-300 font-bold' 
+                        : 'bg-slate-100 text-slate-600';
+                    return `<span class="text-xs px-2 py-0.5 rounded-full ${badgeStyle}">${member ? member.name.split(' ')[0] : ''}</span>`;
+                }).join(' ');
+
+                return `
+                    <div class="border border-slate-200 rounded-lg p-4 hover:shadow-md transition bg-white">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2">
+                            <h3 class="font-bold text-lg text-slate-900">${store.name}</h3>
+                            <div class="flex items-center space-x-2 mt-1 sm:mt-0">
+                                <span class="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded font-medium">${store.genre}</span>
+                                <span class="text-xs text-slate-500 font-semibold">${store.budget}</span>
+                            </div>
+                        </div>
+                        <p class="text-sm text-slate-600 mb-3">${store.memo}</p>
+                        
+                        <div class="pt-2 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                            <div class="text-xs text-slate-400">関連メンバー:</div>
+                            <div class="flex flex-wrap gap-1">${memberBadges}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 実行
+        init();
+    </script>
+</body>
+</html>
